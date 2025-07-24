@@ -10,7 +10,31 @@ import os
 load_dotenv()
 SERPAPI_API_KEY = os.getenv("SERPAPI_API_KEY")
 
-# Keywords for Malaysia energy news
+# Streamlit config
+st.set_page_config(page_title="Malaysia Energy NewsBot", layout="wide")
+
+# Load and center logo
+logo_path = "logo.webp"
+if os.path.exists(logo_path):
+    st.markdown(
+        f"""
+        <div style='text-align: center;'>
+            <img src='data:image/webp;base64,{open(logo_path, "rb").read().encode("base64").decode()}' width='200'/>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+else:
+    st.warning("Logo not found. Make sure 'logo.webp' is in the same folder as main.py.")
+
+# Title
+st.markdown("<h1 style='text-align: center;'>👋 Konnichiwa Shizenian, let's get you up to speed</h1>", unsafe_allow_html=True)
+st.markdown("")
+
+# Optional keyword filter
+filter_keyword = st.text_input("🔎 Optional: Filter results by topic/keyword", "")
+
+# Keywords to search
 keywords = [
     "renewable energy Malaysia", "solar Malaysia", "corporate renewable energy supply scheme Malaysia",
     "CRESS Malaysia", "PPA Malaysia", "RP4 Malaysia", "Review Period 4 Malaysia",
@@ -18,27 +42,7 @@ keywords = [
     "electricity tariff Malaysia", "energy Malaysia", "voltage Malaysia"
 ]
 
-# Streamlit config
-st.set_page_config(page_title="Malaysia Energy NewsBot", layout="wide")
-
-# Centered logo using HTML
-st.markdown(
-    """
-    <div style='text-align: center;'>
-        <img src='logo.webp' width='200'/>
-    </div>
-    """,
-    unsafe_allow_html=True
-)
-
-# Title header
-st.markdown("<h1 style='text-align: center;'>👋 Konnichiwa Shizenian, let's get you up to speed</h1>", unsafe_allow_html=True)
-st.markdown("")
-
-# Optional keyword filter
-filter_keyword = st.text_input("🔎 Optional: Filter results by topic/keyword", "")
-
-# Scraper function using Google News
+# Google News search
 def google_news_search(query):
     params = {
         "q": query,
@@ -51,11 +55,11 @@ def google_news_search(query):
     search = GoogleSearch(params)
     return search.get_dict().get("news_results", [])
 
-# Scrape Now button
+# Scraper logic
 if st.button("📰 Scrape Now", type="primary"):
     all_articles = []
     now = datetime.now()
-    five_days_ago = now - timedelta(days=5)
+    cutoff = now - timedelta(days=30)
 
     with st.spinner("Scraping recent news..."):
         for kw in keywords:
@@ -69,10 +73,9 @@ if st.button("📰 Scrape Now", type="primary"):
                 try:
                     published = parser.parse(date_str, fuzzy=True)
                 except:
-                    continue  # Skip articles with bad date
+                    continue  # Skip bad dates
 
-                # Filter: Only include articles from the past 5 days
-                if published < five_days_ago:
+                if published < cutoff:
                     continue
 
                 all_articles.append({
@@ -82,14 +85,14 @@ if st.button("📰 Scrape Now", type="primary"):
                     "source": source
                 })
 
-    # Sort articles by datetime descending
+    # Sort by datetime descending
     sorted_articles = sorted(all_articles, key=lambda x: x["datetime"], reverse=True)
 
-    # Optional filtering
+    # Keyword filter
     if filter_keyword:
         sorted_articles = [a for a in sorted_articles if filter_keyword.lower() in a["title"].lower()]
 
-    # Display articles
+    # Display
     for article in sorted_articles:
         st.markdown(f"### [{article['title']}]({article['link']})")
         st.markdown(f"<small>{article['datetime'].strftime('%Y-%m-%d')} | {article['source']}</small>", unsafe_allow_html=True)
