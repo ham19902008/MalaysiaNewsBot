@@ -3,26 +3,32 @@ from scraper import scrape_news
 from datetime import datetime
 
 # Page config
-st.set_page_config(page_title="Shizen Malaysia NewsBot", layout="wide")
+st.set_page_config(page_title="Shizenian NewsBot", layout="wide")
 
-# Add logo (your image file must be in GitHub repo, or use raw image URL)
-st.image("https://raw.githubusercontent.com/ham19902008/MalaysiaNewsBot/main/logo.webp", width=120)
+# Centered logo and header
+col1, col2, col3 = st.columns([1, 2, 1])
+with col2:
+    st.image("https://raw.githubusercontent.com/ham19902008/MalaysiaNewsBot/main/logo.webp", width=120)
+    st.markdown("### 👋 Konnichiwa Shizenian, let's get you up to speed")
 
-
-# Header
-st.markdown("### 👋 Konnichiwa Shizenian, let's get you up to speed")
-
-# Scrape and show news
+# Scrape button
 if st.button("Scrape Now"):
     results = scrape_news()
-    
-    # Sort by newest (assumes proper ISO date format or sorts well lexicographically)
-    results = sorted(results, key=lambda x: x["date"], reverse=True)
+
+    def parse_date(date_str):
+        try:
+            return datetime.strptime(date_str, "%m/%d/%Y, %I:%M %p, %z")
+        except:
+            return datetime.min  # fallback if date format fails
+
+    # Sort articles by date (most recent first)
+    results = sorted(results, key=lambda x: parse_date(x["date"]), reverse=True)
 
     if results:
         for article in results:
-            st.markdown(f"#### {article['title']}")
-            st.markdown(f"📅 {article['date']}")
-            st.markdown(f"[🔗 Read more]({article['link']})\n---")
+            st.markdown(f"### {article['title']}")
+            st.markdown(f"🗓️ {article['date']}")
+            st.markdown(f"<span style='font-size:14px'><a href='{article['link']}' target='_blank'>🔗 Read more</a></span>", unsafe_allow_html=True)
+            st.markdown("---")
     else:
         st.info("No articles found.")
