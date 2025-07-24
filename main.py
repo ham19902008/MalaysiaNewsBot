@@ -5,8 +5,6 @@ from dotenv import load_dotenv
 from datetime import datetime
 from dateutil import parser
 import os
-import requests
-from bs4 import BeautifulSoup
 
 # Load environment variables
 load_dotenv()
@@ -20,75 +18,66 @@ keywords = [
     "electricity tariff Malaysia", "energy Malaysia", "voltage Malaysia"
 ]
 
-# Set page config
+# Page config
 st.set_page_config(page_title="Malaysia Energy NewsBot", layout="wide")
 
-# Display logo (make sure logo.webp is in the same directory)
-st.markdown(
-    """
-    <div style="text-align: center;">
-        <img src="logo.webp" width="200"/>
-    </div>
-    """,
-    unsafe_allow_html=True
-)
+# Show logo (ensure logo.webp is in the same directory)
+st.image("logo.webp", width=200)
 
-# Page header
+# Header
 st.markdown("<h1 style='text-align: center;'>👋 Konnichiwa Shizenian, let's get you up to speed</h1>", unsafe_allow_html=True)
 st.markdown("")
 
-# Filter input
+# Optional filter
 filter_keyword = st.text_input("🔎 Optional: Filter results by topic/keyword", "")
 
-# Scrape function
-def google_search(query):
+# Scraper function using Google News
+def google_news_search(query):
     params = {
         "q": query,
-        "engine": "google",
+        "engine": "google_news",
         "api_key": SERPAPI_API_KEY,
-        "num": 3,
         "hl": "en",
-        "gl": "my"
+        "gl": "my",
+        "num": 5
     }
     search = GoogleSearch(params)
-    results = search.get_dict()
-    return results.get("organic_results", [])
+    return search.get_dict().get("news_results", [])
 
-# Scrape on button click
+# Scrape button
 if st.button("📰 Scrape Now", type="primary"):
     all_articles = []
 
-    with st.spinner("Scraping news..."):
+    with st.spinner("Scraping recent news..."):
         for kw in keywords:
-            results = google_search(kw)
+            results = google_news_search(kw)
             for r in results:
-                title = r.get("title")
+                title = r.get("title", "No Title")
                 link = r.get("link")
-                snippet = r.get("snippet", "")
-                date_str = r.get("date") or snippet[:50]
+                source = r.get("source")
+                date_str = r.get("date")
+
                 try:
-                    parsed_date = parser.parse(date_str, fuzzy=True)
+                    published = parser.parse(date_str, fuzzy=True)
                 except:
-                    parsed_date = datetime.now()
+                    published = datetime.now()
 
                 all_articles.append({
-                    "datetime": parsed_date,
+                    "datetime": published,
                     "title": title,
                     "link": link,
+                    "source": source
                 })
 
-    # Sort results by datetime descending
+    # Sort by datetime descending
     sorted_articles = sorted(all_articles, key=lambda x: x["datetime"], reverse=True)
 
-    # Optional filter
+    # Filter if needed
     if filter_keyword:
-        sorted_articles = [
-            a for a in sorted_articles
-            if filter_keyword.lower() in a["title"].lower()
-        ]
+        sorted_articles = [a for a in sorted_articles if filter_keyword.lower() in a["title"].lower()]
 
-    # Display articles
+    # Display results
     for article in sorted_articles:
         st.markdown(f"### [{article['title']}]({article['link']})")
-        st.markdown(f"<small>{article['datetime'].strftime('%Y-%m-%d %H:%M')}</small>", unsafe_allow_html=True)
+        st.markdown(f"<small>{article['datetime'].strftime('%Y-%m-%d')} | {article['source']}</small>", unsafe_allow_html=True)
         st.markdown("---")
