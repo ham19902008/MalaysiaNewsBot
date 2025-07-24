@@ -1,96 +1,102 @@
 import streamlit as st
-from scraper import scrape_news
+import requests
+from bs4 import BeautifulSoup
+import openai
+import os
+from dotenv import load_dotenv
+from serpapi import GoogleSearch
 from datetime import datetime
 from dateutil import parser
-from PIL import Image
 
-# --- PAGE CONFIG ---
+# Load environment variables
+load_dotenv()
+openai.api_key = os.getenv("OPENAI_API_KEY")
+SERPAPI_API_KEY = os.getenv("SERPAPI_API_KEY")
+
+# Streamlit page settings
 st.set_page_config(page_title="Malaysia Energy News", layout="centered")
 
-# --- CUSTOM STYLING ---
-shizen_blue = "#0072BC"
+# Branding and header
+st.image("logo.webp", use_container_width=True)
 st.markdown(
-    f"""
-    <style>
-    .headline {{
-        font-size: 28px;
-        font-weight: bold;
-        margin-top: 30px;
-        margin-bottom: 10px;
-    }}
-    .summary {{
-        font-size: 16px;
-        color: #555;
-        margin-bottom: 20px;
-    }}
-    .scrape-button > button {{
-        background-color: {shizen_blue} !important;
-        color: white !important;
-        border-radius: 8px;
-        padding: 0.5em 1em;
-        font-size: 16px;
-    }}
-    .header-container {{
-        text-align: center;
-    }}
-    .header-container h1 {{
-        font-size: 36px;
-        margin-top: 20px;
-    }}
-    .logo {{
-        width: 120px;
-        margin: 0 auto;
-    }}
-    .search-bar input {{
-        width: 100%;
-        padding: 0.5em;
-        font-size: 16px;
-        border-radius: 8px;
-        border: 1px solid #ccc;
-        margin-bottom: 20px;
-    }}
-    </style>
-    """,
+    "<h1 style='text-align: center; font-size: 36px;'>👋 Konnichiwa Shizenian, let's get you up to speed</h1>",
     unsafe_allow_html=True,
 )
 
-# --- HEADER ---
-with st.container():
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
-        logo = Image.open("logo.webp")
-        st.image(logo, use_column_width=False)
-        st.markdown('<div class="header-container"><h1>👋 Konnichiwa Shizenian, let\'s get you up to speed</h1></div>', unsafe_allow_html=True)
-
-# --- SCRAPE BUTTON ---
-if st.button("Scrape Now", key="scrape", help="Fetch latest news"):
-    st.session_state["articles"] = scrape_news()
-
-# --- FETCH DATA ---
-if "articles" not in st.session_state:
-    st.session_state["articles"] = scrape_news()
-
-articles = st.session_state["articles"]
-
-# --- FILTER / SEARCH BAR ---
-search_term = st.text_input("Search articles by keyword", "").strip().lower()
-if search_term:
-    articles = [a for a in articles if search_term in a["title"].lower() or search_term in a.get("summary", "").lower()]
-
-# --- DATE PARSING FIX ---
-def parse_date(date_str):
+# Function to call OpenAI for summary
+def summarize_text(text):
+    prompt = f"Summarize this news article in 1-2 sentences:\n\n{text}"
     try:
-        clean_str = date_str.replace("UTC", "").strip()
-        return parser.parse(clean_str)
-    except Exception:
-        return datetime.min  # fallback if parsing fails
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "You summarize news articles briefly."},
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=100,
+            temperature=0.5
+        )
+        summary = response['choices'][0]['message']['content'].strip()
+        return summary
+    except Exception as e:
+        return f"Summary not available. Error: {str(e)}"
 
-# --- SORT BY DATE DESCENDING ---
-articles.sort(key=lambda x: parse_date(x["date"]), reverse=True)
+# Scraper function
+def scrape_news():
+    params = {
+        "engine": "google",
+        "q": "Malaysia energy news site:thestar.com.my OR site:nst.com.my OR site:bernama.com",
+        "api_key": SERPAPI_API_KEY,
+        "num": 10,
+        "hl": "en"
+    }
 
-# --- DISPLAY ARTICLES ---
-for article in articles:
-    st.markdown(f"<div class='headline'>{article['title']}</div>", unsafe_allow_html=True)
-    st.markdown(f"<div class='summary'>{article['summary']}</div>", unsafe_allow_html=True)
-    st.write(f"📅 {article['date']}")
-    st.markdown(f"🔗 [Read more]({article['url']})")
+    search = GoogleSearch(params)
+    results = search.get_dict()
+    articles = results.get("organic_results", [])
+
+    scraped = []
+    for article in articles:
+        title = article.get("title")
+        link = article.get("link")
+        date_str = article.get("date")
+        snippet = article.get("snippet")
+
+        try:
+            published = parser.parse(date_str)
+        except:
+            published = datetime.now()
+
+        summary = summarize_text(snippet)
+
+        scraped.append({
+            "title": title,
+            "link": link,
+            "published": published,
+            "summary": summary
+        })
+
+    return sorted(scraped, key=lambda x: x["published"], reverse=True)
+
+# Button logic
+if st.button("Scrape Now", type="primary"):
+    st.info("Scraping in progress...")
+    try:
+        scraped_articles = scrape_news()
+        st.success(f"Scraped {len(scraped_articles)} articles.")
+    except Exception as e:
+        st.error(f"Error during scraping: {e}")
+        scraped_articles = []
+else:
+    scraped_articles = []
+
+# Display section
+if scraped_articles:
+    st.write("## 📰 Latest News")
+
+    for article in scraped_articles:
+        st.markdown(f"### {article['title']}")
+        st.markdown(f"📅 {article['published'].strftime('%m/%d/%Y, %I:%M %p, %Z')}")
+        st.markdown(f"<p style='font-size: 14px;'><a href='{article['link']}' target='_blank'>🔗 Read more</a></p>", unsafe_allow_html=True)
+        st.markdown(f"<p style='font-size: 13px; color: gray;'>{article['summary']}</p>", unsafe_allow_html=True)
+        st.markdown("---")
