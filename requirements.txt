@@ -1,6 +1,4 @@
 streamlit
 requests
-python-dotenv
-yagmail
-schedule
+beautifulsoup4
 openai
