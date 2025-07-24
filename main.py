@@ -1,53 +1,96 @@
 import streamlit as st
 from scraper import scrape_news
-from summarizer import summarize
 from datetime import datetime
+from dateutil import parser
+from PIL import Image
 
-st.set_page_config(page_title="Shizenian NewsBot", layout="wide")
+# --- PAGE CONFIG ---
+st.set_page_config(page_title="Malaysia Energy News", layout="centered")
 
-# HEADER with logo and greeting
-st.markdown("""
-<div style='text-align: center;'>
-    <img src='https://raw.githubusercontent.com/ham19902008/MalaysiaNewsBot/main/logo.webp' width='120'/>
-    <h1 style='font-size: 38px; margin-top: 10px;'>👋 Konnichiwa Shizenian, let's get you up to speed</h1>
-</div>
-""", unsafe_allow_html=True)
+# --- CUSTOM STYLING ---
+shizen_blue = "#0072BC"
+st.markdown(
+    f"""
+    <style>
+    .headline {{
+        font-size: 28px;
+        font-weight: bold;
+        margin-top: 30px;
+        margin-bottom: 10px;
+    }}
+    .summary {{
+        font-size: 16px;
+        color: #555;
+        margin-bottom: 20px;
+    }}
+    .scrape-button > button {{
+        background-color: {shizen_blue} !important;
+        color: white !important;
+        border-radius: 8px;
+        padding: 0.5em 1em;
+        font-size: 16px;
+    }}
+    .header-container {{
+        text-align: center;
+    }}
+    .header-container h1 {{
+        font-size: 36px;
+        margin-top: 20px;
+    }}
+    .logo {{
+        width: 120px;
+        margin: 0 auto;
+    }}
+    .search-bar input {{
+        width: 100%;
+        padding: 0.5em;
+        font-size: 16px;
+        border-radius: 8px;
+        border: 1px solid #ccc;
+        margin-bottom: 20px;
+    }}
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
-# SEARCH BAR
-search_query = st.text_input("🔍 Search articles by keyword:", "")
+# --- HEADER ---
+with st.container():
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        logo = Image.open("logo.webp")
+        st.image(logo, use_column_width=False)
+        st.markdown('<div class="header-container"><h1>👋 Konnichiwa Shizenian, let\'s get you up to speed</h1></div>', unsafe_allow_html=True)
 
-# CUSTOM STYLED SCRAPE BUTTON
-scrape_col = st.columns([4, 1, 4])[1]
-with scrape_col:
-    scrape_now = st.button("Scrape Now", use_container_width=True)
+# --- SCRAPE BUTTON ---
+if st.button("Scrape Now", key="scrape", help="Fetch latest news"):
+    st.session_state["articles"] = scrape_news()
 
-if scrape_now:
-    articles = scrape_news()
+# --- FETCH DATA ---
+if "articles" not in st.session_state:
+    st.session_state["articles"] = scrape_news()
 
-    # Parse dates correctly
-    def parse_date(date_str):
-        try:
-            return datetime.strptime(date_str, "%m/%d/%Y, %I:%M %p, %z")
-        except:
-            return datetime.min
+articles = st.session_state["articles"]
 
-    # Sort by newest first
-    articles.sort(key=lambda x: parse_date(x["date"]), reverse=True)
+# --- FILTER / SEARCH BAR ---
+search_term = st.text_input("Search articles by keyword", "").strip().lower()
+if search_term:
+    articles = [a for a in articles if search_term in a["title"].lower() or search_term in a.get("summary", "").lower()]
 
-    # Filter articles based on search
-    if search_query:
-        articles = [a for a in articles if search_query.lower() in a["title"].lower()]
+# --- DATE PARSING FIX ---
+def parse_date(date_str):
+    try:
+        clean_str = date_str.replace("UTC", "").strip()
+        return parser.parse(clean_str)
+    except Exception:
+        return datetime.min  # fallback if parsing fails
 
-    if articles:
-        for article in articles:
-            st.markdown(f"<h3 style='margin-bottom: 0;'>{article['title']}</h3>", unsafe_allow_html=True)
-            st.markdown(f"<span style='color: grey;'>🗓️ {article['date']}</span>", unsafe_allow_html=True)
+# --- SORT BY DATE DESCENDING ---
+articles.sort(key=lambda x: parse_date(x["date"]), reverse=True)
 
-            # Show summary (OpenAI)
-            summary = summarize(article["title"])
-            st.markdown(f"<p style='font-size: 14px; color: #444;'>{summary}</p>", unsafe_allow_html=True)
-
-            st.markdown(f"<a href='{article['link']}' target='_blank' style='font-size: 13px;'>🔗 Read more</a>", unsafe_allow_html=True)
-            st.markdown("<hr>", unsafe_allow_html=True)
-    else:
-        st.warning("No articles found.")
+# --- DISPLAY ARTICLES ---
+for article in articles:
+    st.markdown(f"<div class='headline'>{article['title']}</div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='summary'>{article['summary']}</div>", unsafe_allow_html=True)
+    st.write(f"📅 {article['date']}")
+    st.markdown(f"🔗 [Read more]({article['url']})")
