@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import openai
-from serpapi import GoogleSearch  # Correct import — requires google-search-results
+from serpapi import GoogleSearch
 from dotenv import load_dotenv
 from datetime import datetime
 from dateutil import parser
@@ -13,101 +13,101 @@ from bs4 import BeautifulSoup
 load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 SERPAPI_API_KEY = os.getenv("SERPAPI_API_KEY")
-
-# Set OpenAI key
 openai.api_key = OPENAI_API_KEY
 
-# Suggested keywords
-suggested_keywords = [
-    "renewables Malaysia",
-    "solar",
-    "energy transition",
-    "green hydrogen",
-    "Tenaga Nasional Berhad",
-    "solar farm",
-    "Net Energy Metering Malaysia"
+# Static keywords list
+keywords = [
+    "renewable energy Malaysia", "solar Malaysia", "corporate renewable energy supply scheme Malaysia",
+    "CRESS Malaysia", "PPA Malaysia", "RP4 Malaysia", "Review Period 4 Malaysia",
+    "Energy Commission Malaysia", "Suruhanjaya Tenaga", "electricity Malaysia",
+    "electricity tariff Malaysia", "energy Malaysia", "voltage Malaysia"
 ]
 
-# Header
-st.markdown("<h1 style='text-align: center; font-size: 42px;'>Konnichiwa Shizenian ☀️</h1>", unsafe_allow_html=True)
+# Set page config
+st.set_page_config(page_title="Malaysia Energy NewsBot", layout="wide")
 
-# Sidebar
-st.sidebar.title("Search Controls")
-keyword = st.sidebar.text_input("Enter keyword to search", "")
-filter_keyword = st.sidebar.text_input("Filter results by topic/keyword", "")
-scrape_now = st.sidebar.button("🔍 Scrape Now")
+# Header Logo (replace with your own logo URL or local file)
+st.markdown(
+    """
+    <div style="text-align: center;">
+        <img src="https://shizenenergy.net/wp-content/uploads/2022/11/logo_shizen_black.png" alt="Shizen Energy" width="200"/>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
 
-# Display suggestions
-if keyword == "":
-    st.subheader("Suggested Keywords:")
-    for k in suggested_keywords:
-        st.write(f"- {k}")
+# Greeting
+st.markdown("<h1 style='text-align: center;'>👋 Konnichiwa Shizenian, let's get you up to speed</h1>", unsafe_allow_html=True)
+st.markdown("")
 
-# Search function
-def google_search(query):
-    params = {
-        "q": query,
-        "engine": "google",
-        "api_key": SERPAPI_API_KEY,
-        "num": 5,
-        "hl": "en",
-        "gl": "my"
-    }
-    search = GoogleSearch(params)
-    results = search.get_dict()
-    return results.get("organic_results", [])
+# Filter input
+filter_keyword = st.text_input("🔎 Optional: Filter results by topic/keyword", "")
 
-# Scrape and summarize
-def scrape_and_summarize(url):
-    try:
-        res = requests.get(url, timeout=10)
-        soup = BeautifulSoup(res.text, "html.parser")
-        paragraphs = soup.find_all("p")
-        text = " ".join([p.get_text() for p in paragraphs])
-        prompt = f"Summarize this news article in 3 bullet points:\n\n{text}"
-        summary = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": prompt}]
-        )
-        return summary['choices'][0]['message']['content'].strip()
-    except Exception as e:
-        return f"Could not summarize: {e}"
+# Search button
+if st.button("📰 Scrape Now"):
+    all_articles = []
 
-# Main logic
-if scrape_now and keyword:
-    st.info(f"Searching for: **{keyword}**")
-    results = google_search(keyword)
+    def google_search(query):
+        params = {
+            "q": query,
+            "engine": "google",
+            "api_key": SERPAPI_API_KEY,
+            "num": 3,
+            "hl": "en",
+            "gl": "my"
+        }
+        search = GoogleSearch(params)
+        results = search.get_dict()
+        return results.get("organic_results", [])
 
-    if not results:
-        st.warning("No results found.")
-    else:
-        articles = []
-        for result in results:
-            title = result.get("title")
-            link = result.get("link")
-            date_str = result.get("date") or result.get("snippet", "")[:50]
-            try:
-                parsed_date = parser.parse(date_str, fuzzy=True)
-            except:
-                parsed_date = datetime.now()
-            summary = scrape_and_summarize(link)
-            articles.append({
-                "datetime": parsed_date,
-                "title": title,
-                "link": link,
-                "summary": summary
-            })
+    def scrape_and_summarize(url):
+        try:
+            res = requests.get(url, timeout=10)
+            soup = BeautifulSoup(res.text, "html.parser")
+            text = " ".join(p.get_text() for p in soup.find_all("p"))
+            prompt = f"Summarize this Malaysian news article in 3 bullet points:\n\n{text}"
+            summary = openai.ChatCompletion.create(
+                model="gpt-3.5-turbo",
+                messages=[{"role": "user", "content": prompt}]
+            )
+            return summary['choices'][0]['message']['content'].strip()
+        except Exception as e:
+            return f"Could not summarize: {e}"
 
-        # Sort by datetime descending
-        sorted_articles = sorted(articles, key=lambda x: x["datetime"], reverse=True)
+    with st.spinner("Scraping news and generating summaries..."):
+        for kw in keywords:
+            results = google_search(kw)
+            for r in results:
+                title = r.get("title")
+                link = r.get("link")
+                snippet = r.get("snippet", "")
+                date_str = r.get("date") or snippet[:50]
+                try:
+                    parsed_date = parser.parse(date_str, fuzzy=True)
+                except:
+                    parsed_date = datetime.now()
 
-        # Filter
-        if filter_keyword:
-            sorted_articles = [a for a in sorted_articles if filter_keyword.lower() in a["title"].lower() or filter_keyword.lower() in a["summary"].lower()]
+                summary = scrape_and_summarize(link)
+                all_articles.append({
+                    "datetime": parsed_date,
+                    "title": title,
+                    "link": link,
+                    "summary": summary
+                })
 
-        # Display
-        for a in sorted_articles:
-            st.markdown(f"### [{a['title']}]({a['link']})")
-            st.markdown(f"<small>{a['datetime'].strftime('%Y-%m-%d %H:%M')}</small>", unsafe_allow_html=True)
-            st.markdown(f"<div style='font-size: 14px; color: gray;'>{a['summary']}</div>", unsafe_allow_html=True)
-            st.markdown("---")
+    # Sort results by datetime
+    sorted_articles = sorted(all_articles, key=lambda x: x["datetime"], reverse=True)
+
+    # Optional filter
+    if filter_keyword:
+        sorted_articles = [
+            a for a in sorted_articles
+            if filter_keyword.lower() in a["title"].lower() or filter_keyword.lower() in a["summary"].lower()
+        ]
+
+    # Display results
+    for article in sorted_articles:
+        st.markdown(f"### [{article['title']}]({article['link']})")
+        st.markdown(f"<small>{article['datetime'].strftime('%Y-%m-%d %H:%M')}</small>", unsafe_allow_html=True)
+        st.markdown(f"<div style='font-size: 14px; color: gray;'>{article['summary']}</div>", unsafe_allow_html=True)
+        st.markdown("---")
